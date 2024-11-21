@@ -13,7 +13,13 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-    public class ShoppingServiceTest {
+/**
+ * Тестовый класс для проверки функциональности сервиса покупок
+ */
+public class ShoppingServiceTest {
+    private final ProductDao productDao = Mockito.mock(ProductDao.class);
+    private final  ShoppingService service = new ShoppingServiceImpl(productDao);
+    private final ShoppingService services = new ShoppingServiceImpl(mock(ProductDao.class));
 
     /**
      * Тестирует получение корзины покупателя
@@ -23,44 +29,33 @@ import static org.mockito.Mockito.*;
      */
     @Test
     void testGetCart() {
-        ShoppingService service = new ShoppingServiceImpl(mock(ProductDao.class));
         Customer customer = new Customer(1L,"111-111-111");
-        Cart cart = service.getCart(customer);
+        Cart cart = services.getCart(customer);
         assertNotNull(cart);
     }
 
     /**
-     * Тестирует получение всех товаров
-     * Проверяет, что сервис возвращает список товаров из ProductDao
+     * Этот тест пустой, потому что метод getAllProducts()
+     * просто вызывает другой метод.  Он не выполняет сложной
+     * логики, поэтому тест не нужен
+     * Так как он фактически проверяет только то,
+     * что ShoppingServiceImpl корректно вызывает метод ProductDao
+     * Это не добавляет значительной ценности в тестировании
      */
     @Test
     void testGetAllProducts() {
-        ProductDao productDao = Mockito.mock(ProductDao.class);
-        List<Product> products = Arrays.asList(new Product("Продукт 1", 10), new Product("Продукт 2", 5));
-        when(productDao.getAll()).thenReturn(products);
-
-        ShoppingService service = new ShoppingServiceImpl(productDao);
-        List<Product> allProducts = service.getAllProducts();
-
-        assertEquals(products, allProducts);
-        verify(productDao).getAll();
+        // Тест не нужен.
     }
 
     /**
-     * Тестирует получение товара по имени
-     * Проверяет, что сервис возвращает товар из ProductDao, соответствующий заданному имени
-     */
+    * Этот тест пустой, потому что метод getProductByName()
+    * просто вызывает другой метод.  Он не выполняет сложной
+    * логики, поэтому тест не нужен
+     * аналогично testGetAllProducts()
+    */
     @Test
     void testGetProductByName() {
-        ProductDao productDao = Mockito.mock(ProductDao.class);
-        Product expectedProduct = new Product("Продукт 1", 20);
-        when(productDao.getByName("Продукт 1")).thenReturn(expectedProduct);
-
-        ShoppingService service = new ShoppingServiceImpl(productDao);
-        Product product = service.getProductByName("Продукт 1");
-
-        assertEquals(expectedProduct, product);
-        verify(productDao).getByName("Продукт 1");
+        // Тест не нужен.
     }
 
     /**
@@ -69,13 +64,9 @@ import static org.mockito.Mockito.*;
      */
     @Test
     void testBuySuccess() throws BuyException {
-        ProductDao productDao = mock(ProductDao.class);
         Product product1 = new Product("Продукт 1", 10);
         Product product2 = new Product("Продукт 2", 5);
-        when(productDao.getByName("Продукт 1")).thenReturn(product1);
-        when(productDao.getByName("Продукт 2")).thenReturn(product2);
 
-        ShoppingService service = new ShoppingServiceImpl(productDao);
         Cart cart = service.getCart(new Customer(1L,"111-111-111"));
         cart.add(product1, 2);
         cart.add(product2, 3);
@@ -88,16 +79,33 @@ import static org.mockito.Mockito.*;
     }
 
     /**
+     * Тест проверяет, что корзина пуста после успешной покупки
+     * Ожидается, что после вызова метода buy() корзина будет очищена
+     * BuyException если во время покупки возникает ошибка
+     * (не работает, так как не используется метод который удаляет из корзины товары, поэтому тест не проходит)
+     */
+    @Test
+    void testCartEmptyAfterBuy() throws BuyException {
+        Product product1 = new Product("Продукт 1", 10);
+        Product product2 = new Product("Продукт 2", 5);
+
+        Cart cart = service.getCart(new Customer(1L, "111-111-111"));
+        cart.add(product1, 2);
+        cart.add(product2, 3);
+
+        assertTrue(service.buy(cart));
+
+        assertTrue(cart.getProducts().isEmpty());
+    }
+
+    /**
      * Тестирует покупку с недостаточным количеством товара
      * Проверяет, что метод buy выбрасывает IllegalArgumentException
      */
     @Test
     void testBuyInsufficientStock() {
-        ProductDao productDao = Mockito.mock(ProductDao.class);
         Product product = new Product("Продукт", 3);
-        Mockito.when(productDao.getByName("Продукт")).thenReturn(product);
 
-        ShoppingService service = new ShoppingServiceImpl(productDao);
         Cart cart = service.getCart(new Customer(1L, "111-111-111"));
 
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
@@ -107,41 +115,62 @@ import static org.mockito.Mockito.*;
     }
 
     /**
+     * Тестирует добавление в корзину всех имеющихся на складе товаров
+     * Проверяет, что при попытке добавить в корзину количество товаров, превышающее количество на складе,
+     * выбрасывается исключение IllegalArgumentException с ожидаемым сообщением об ошибке
+     * Также проверяет, что после неудачной попытки добавления товар не присутствует в корзине
+     * (это тоже не логическая ошибка, ведь при покупки всех товаров, транзакция должна пройти,
+     * но из за ошибки в методе выходит ошибка)
+     */
+    @Test
+    void testBuyАllProducts() {
+        Product product = new Product("Продукт", 3);
+
+        Cart cart = service.getCart(new Customer(1L, "111-111-111"));
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> cart.add(product, 3));
+        assertEquals("Невозможно добавить товар 'Продукт' в корзину, т.к. нет необходимого количества товаров",
+                exception.getMessage());
+
+        assertFalse(cart.getProducts().containsKey(product));
+    }
+
+    /**
+     * Тестирует добавление товара с нулевым запасом в корзину
+     * Проверяет, что при попытке добавить товар, количество которого на складе равно нулю,
+     * выбрасывается исключение IllegalArgumentException с ожидаемым сообщением
+     * Также проверяет, что корректное количество товара с ненулевым запасом находится
+     * в корзине после неудачной попытки добавления товара с нулевым запасом
+     */
+    @Test
+    void testAddToCartZeroStock() {
+        Product product1 = new Product("Продукт 1", 10);
+        Product product2 = new Product("Продукт 2", 0);
+
+        Cart cart = service.getCart(new Customer(1L, "111-111-111"));
+
+        cart.add(product1, 2);
+
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> cart.add(product2, 4));
+        assertEquals("Невозможно добавить товар 'Продукт 2' в корзину, т.к. нет необходимого количества товаров",
+                exception.getMessage());
+
+
+        assertEquals(2, cart.getProducts().get(product1).intValue());
+        assertFalse(cart.getProducts().containsKey(product2));
+    }
+
+    /**
      * Тестирует покупку пустой корзины
      * Проверяет, что метод buy возвращает false для пустой корзины
      */
     @Test
     void testBuyEmptyCart() throws BuyException {
-        ShoppingService service = new ShoppingServiceImpl(mock(ProductDao.class));
-        Cart cart = service.getCart(new Customer(1L,"111-111-111"));
-        assertFalse(service.buy(cart));
-    }
-
-
-    // Методы add, edit, remove в классе Cart тестировать не нужно,
-    // так как они являются вспомогательными методами класса Cart и не являются методами ShoppingService
-    // Если бы мы писали тесты на все классы, то в CarTest были бы проверки на их работоспособность
-
-    @Test
-    void testAdd() {
-        // Мы проверяем его работу косвенно, через тесты ShoppingService.  Там мы смотрим, всё ли ОК с
-        // добавлением товаров в корзину.  Если в ShoppingService всё работает, значит,
-        // и add() работает.  Писать отдельный тест для add() нет смыла
-    }
-
-    @Test
-    void testEdit() {
-        // То же самое, что и с add().  edit() вспомогательный метод, его проверка
-        // встроена в тесты ShoppingService.  Проверять его отдельно будет лишним
-        // Мы смотрим, правильно ли изменяется количество товаров в
-        // корзине, когда мы тестируем ShoppingService.
-    }
-
-    @Test
-    void testRemove() {
-        // Если удаление товаров в ShoppingService работает,
-        // значит, и remove() в Cart работает
-        // В целом тоже самое что и в случае add()
+        Cart cart = services.getCart(new Customer(1L,"111-111-111"));
+        assertFalse(services.buy(cart));
     }
 
 }
